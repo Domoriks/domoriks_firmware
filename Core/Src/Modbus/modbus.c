@@ -14,6 +14,8 @@
 #include "main.h"
 #include "timer.h"
 
+#include "timing_us.h"
+
 #include "device_config.h"
 
 #include "Actions/actions.h"
@@ -307,6 +309,14 @@ void response() {
 }
 
 void modbus() {
+	/* If an RX idle event occurred, wait T3.5 after the last byte before
+	 * treating the buffer as a complete frame (Modbus RTU). */
+	if (rx_pending) {
+		if ((uint32_t)(timing_us_now() - rx_last_us) >= (uint32_t)MODBUS_T3_5_US()) {
+			new_rxdata = 1;
+			rx_pending = 0;
+		}
+	}
 	if (waiting4response)
 	{
 		response();

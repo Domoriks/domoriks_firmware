@@ -25,6 +25,7 @@
 #include <stdint.h>
 
 #include "timer.h"
+#include "timing_us.h"
 
 #include "Actions/actions.h"
 #include "Flash/flash.h"
@@ -92,6 +93,8 @@ uint8_t MODBUS_ID;
 volatile uint8_t uart_rxBuffer[UART_BUFFER_SIZE] = { 0 };
 volatile uint8_t new_rxdata = 0;
 volatile uint16_t rxDataLen = 0;
+volatile uint8_t rx_pending = 0;
+volatile uint32_t rx_last_us = 0;
 
 /* USER CODE END 0 */
 
@@ -129,6 +132,9 @@ int main(void)
   MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim14);
+
+  /* Initialize microsecond timer used for Modbus T3.5 detection */
+  timing_us_init();
 
   HAL_UARTEx_ReceiveToIdle_DMA(&huart1, uart_rxBuffer, UART_BUFFER_SIZE);
   __HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
@@ -542,11 +548,13 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
 			}
 		}
 
-		if (!overflow)
-		{
-			rxDataLen = size;
-			new_rxdata = 1;
-		} else {
+    if (!overflow)
+    {
+      /* Record length and timestamp; defer frame completion until T3.5 has elapsed */
+      rxDataLen = size;
+      rx_last_us = timing_us_now();
+      rx_pending = 1;
+    } else {
 			HAL_UARTEx_ReceiveToIdle_DMA(&huart1, uart_rxBuffer, UART_BUFFER_SIZE);
 			__HAL_DMA_DISABLE_IT(&hdma_usart1_rx, DMA_IT_HT); // Disable half-transfer interrupt if not needed
 			//clear buffer (needed after overflow)

@@ -13,12 +13,19 @@
 
 //#define DEVICE_ID 10
 
-#define BAUDRATE 115200
+#define BAUDRATE 115200U
 
-#define US_IN_S 1000000
-#define UARTPACKET_SIZE 11 //extra pauze bit + start + 8 data + stop
-#define UART_BYTE_TIME_US() ((BAUDRATE * UARTPACKET_SIZE / US_IN_S))
-#define UART_BYTE_TIME_MS() ((UART_BYTE_TIME_US() / 1000) > 1 ? (UART_BYTE_TIME_US() / 1000) : 1)
+/* Character timing (for Modbus RTU framing). Using 8N1 by default: 1 start + 8 data + 1 stop = 10 bits */
+#define UART_BITS_PER_CHAR 10U
+
+/* microseconds per UART character */
+#define UART_BYTE_TIME_US() ((UART_BITS_PER_CHAR * 1000000UL) / (BAUDRATE))
+/* rounded-up milliseconds per byte */
+#define UART_BYTE_TIME_MS() (((UART_BYTE_TIME_US()) + 999UL) / 1000UL)
+
+/* Modbus RTU silent intervals */
+#define MODBUS_T1_5_US()   ((UART_BYTE_TIME_US() * 15UL) / 10UL)
+#define MODBUS_T3_5_US()   ((UART_BYTE_TIME_US() * 35UL) / 10UL)
 
 //#define HOLD_REGS_SIZE (OUTPUTS_SIZE + (INPUTS_SIZE * 10)) //
 //#define INPUTS_REGS_SIZE 1 //not used I think

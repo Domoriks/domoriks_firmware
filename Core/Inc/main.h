@@ -95,6 +95,8 @@ extern uint8_t MODBUS_ID;
 extern volatile uint8_t uart_rxBuffer[UART_BUFFER_SIZE];
 extern volatile uint8_t new_rxdata;
 extern volatile uint16_t rxDataLen;
+extern volatile uint8_t rx_pending;
+extern volatile uint32_t rx_last_us;
 
 /* USER CODE END Private defines */
 
