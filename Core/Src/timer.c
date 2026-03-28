@@ -9,4 +9,4 @@
 #include <stdbool.h>
 #include "timer.h"
 
-uint32_t GLOBAL_TIMER = 0;
+volatile uint32_t GLOBAL_TIMER = 0;

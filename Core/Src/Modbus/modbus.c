@@ -79,9 +79,10 @@ void recieve() {
 				length = 0;
 				encode_modbus_rtu(uart_txBuffer, &length, &recieved_message);
 				txDataLen = length;
-				HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, 1); //Set RS485 in write mode
-				HAL_UART_Transmit(&huart1, uart_txBuffer, txDataLen, 2 * length * UART_BYTE_TIME_MS());
-				HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, 0); //Set RS485 in read mode
+				/* Start interrupt-driven transmit and set RS485 driver to TX.
+				 * The TX-complete callback will switch RS485 back to RX. */
+				HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_SET);
+				HAL_UART_Transmit_IT(&huart1, uart_txBuffer, txDataLen);
 			}
 		}
 	} else {
@@ -158,10 +159,7 @@ void send(){
 					encode_modbus_rtu(uart_txBuffer, &length, &send_message);
 					txDataLen = length;
 					HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_SET);
-					HAL_UART_Transmit(&huart1, uart_txBuffer, txDataLen, 2 * length * UART_BYTE_TIME_MS());
-					HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_RESET); // Set RS485 in read mode
-					uint32_t start = HAL_GetTick();
-					while ((HAL_GetTick() - start) < UART_BYTE_TIME_US());
+					HAL_UART_Transmit_IT(&huart1, uart_txBuffer, txDataLen);
 					#endif
 					
 					resend_timer = TIMER_SET();
@@ -214,10 +212,7 @@ void send(){
 				encode_modbus_rtu(uart_txBuffer, &length, &send_message);
 				txDataLen = length;
 				HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_SET);
-				HAL_UART_Transmit(&huart1, uart_txBuffer, txDataLen, 2 * length * UART_BYTE_TIME_MS());
-				HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_RESET); // Set RS485 in read mode
-				uint32_t start = HAL_GetTick();
-				while ((HAL_GetTick() - start) < UART_BYTE_TIME_US());
+				HAL_UART_Transmit_IT(&huart1, uart_txBuffer, txDataLen);
 				#endif
 
 				resend_timer = TIMER_SET();
@@ -278,8 +273,7 @@ void response() {
 					encode_modbus_rtu(uart_txBuffer, &length, &recieved_message);
 					txDataLen = length;
 					HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_SET);
-					HAL_UART_Transmit(&huart1, uart_txBuffer, txDataLen, 2 * length * UART_BYTE_TIME_MS());
-					HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_RESET);
+					HAL_UART_Transmit_IT(&huart1, uart_txBuffer, txDataLen);
 				}
 			}
 		}

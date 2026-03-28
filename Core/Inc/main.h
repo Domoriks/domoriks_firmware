@@ -92,9 +92,9 @@ extern DMA_HandleTypeDef hdma_usart1_rx;
 #define MODBUS_ID_ADDRESS  0x08007FFE  // The fixed address where the ID is stored
 extern uint8_t MODBUS_ID;
 
-extern uint8_t uart_rxBuffer[UART_BUFFER_SIZE];
-extern uint8_t new_rxdata;
-extern uint16_t rxDataLen;
+extern volatile uint8_t uart_rxBuffer[UART_BUFFER_SIZE];
+extern volatile uint8_t new_rxdata;
+extern volatile uint16_t rxDataLen;
 
 /* USER CODE END Private defines */
 

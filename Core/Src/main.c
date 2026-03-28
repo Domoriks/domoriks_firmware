@@ -89,9 +89,9 @@ uint8_t MODBUS_ID;
 #endif
 #define NEWACTIONS
 
-uint8_t uart_rxBuffer[UART_BUFFER_SIZE] = { 0 };
-uint8_t new_rxdata = 0;
-uint16_t rxDataLen = 0;
+volatile uint8_t uart_rxBuffer[UART_BUFFER_SIZE] = { 0 };
+volatile uint8_t new_rxdata = 0;
+volatile uint16_t rxDataLen = 0;
 
 /* USER CODE END 0 */
 
@@ -568,6 +568,17 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart1, uart_rxBuffer, UART_BUFFER_SIZE);
 		__HAL_DMA_DISABLE_IT(&hdma_usart1_rx, DMA_IT_HT); // Disable half-transfer interrupt if not needed
 	}
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        /* Transmission finished: switch RS485 back to receive and re-arm RX DMA */
+        HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_RESET);
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart1, uart_rxBuffer, UART_BUFFER_SIZE);
+        __HAL_DMA_DISABLE_IT(&hdma_usart1_rx, DMA_IT_HT);
+    }
 }
 
 //void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart)

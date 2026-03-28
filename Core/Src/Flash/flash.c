@@ -11,7 +11,7 @@
 
 static uint32_t GetPage(uint32_t Addr)
 {
-  return (Addr - FLASH_BASE) / FLASH_PAGE_SIZE;;
+    return (Addr - FLASH_BASE) / FLASH_PAGE_SIZE;
 }
 
 HAL_StatusTypeDef Flash_Erase(uint32_t addr, uint32_t size) {
@@ -44,25 +44,41 @@ HAL_StatusTypeDef Flash_Write(uint32_t addr, void *data, uint32_t size) {
     uint32_t remainingSize = size;
     uint8_t *pData = (uint8_t *)data;
 
+    /* nothing to do */
+    if (remainingSize == 0) {
+        return HAL_OK;
+    }
+
+    /* Address must be double-word (64-bit) aligned for FLASH_TYPEPROGRAM_DOUBLEWORD */
+    if ((addr % sizeof(uint64_t)) != 0) {
+        return HAL_ERROR;
+    }
+
     HAL_FLASH_Unlock();
 
-    while (remainingSize > 0) {
-        uint64_t data64 = 0;
+    const size_t DW_SIZE = sizeof(uint64_t);
 
-        // Prepare 64-bit data from pData (little-endian order for STM32)
-        for (int i = 0; i < sizeof(uint64_t) && i < remainingSize; i++) {
+    while (remainingSize > 0) {
+        /* Default all bytes to 0xFF (erased state) and overwrite with actual data bytes */
+        uint64_t data64 = 0xFFFFFFFFFFFFFFFFULL;
+        size_t writeBytes = (remainingSize < DW_SIZE) ? remainingSize : DW_SIZE;
+
+        /* Prepare 64-bit data from pData (little-endian order for STM32) */
+        for (size_t i = 0; i < writeBytes; i++) {
+            /* clear this byte then set it to the provided value */
+            data64 &= ~(((uint64_t)0xFF) << (i * 8));
             data64 |= ((uint64_t)pData[i]) << (i * 8);
         }
 
-        // Program double word (64 bits) at a time
+        /* Program double word (64 bits) at a time; flash address advances by DW_SIZE */
         status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr, data64);
         if (status != HAL_OK) {
             break;
         }
 
-        addr += sizeof(uint64_t);
-        pData += sizeof(uint64_t);
-        remainingSize -= sizeof(uint64_t);
+        addr += DW_SIZE;
+        pData += writeBytes; /* advance source by actual bytes consumed */
+        remainingSize -= (uint32_t)writeBytes;
     }
 
     HAL_FLASH_Lock();

@@ -11,7 +11,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-extern uint32_t GLOBAL_TIMER;
+extern volatile uint32_t GLOBAL_TIMER;
 #define TICK_INTERVAL_TIME 10
 #define GLOBAL_TIMER_TICK() (GLOBAL_TIMER += TICK_INTERVAL_TIME)
 #define TIMER_SET() (GLOBAL_TIMER)
