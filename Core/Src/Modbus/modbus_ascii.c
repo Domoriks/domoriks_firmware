@@ -95,10 +95,6 @@ uint8_t encode_modbus_ascii(char* encoded, size_t* length, ModbusMessage* messag
 
     encoded[idx++] = ':';
 
-    // Helper to append a byte as two hex chars
-    auto_append_byte:
-    ;
-
     // Append slave address
     encoded[idx++] = hex[(message->slave_address >> 4) & 0x0F];
     encoded[idx++] = hex[message->slave_address & 0x0F];

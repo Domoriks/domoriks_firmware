@@ -21,6 +21,11 @@ typedef struct {             //Combine with Outputparam in IO param
   	uint8_t changed;
 } InputParam;
 
+typedef enum {
+	type_pushbutton = 0,
+	type_switch = 1
+} InputButtonType;
+
 typedef uint8_t (*pfnInputInit)(InputParam*);
 typedef uint8_t (*pfnInputUpdate)(InputParam*);
 
@@ -31,10 +36,6 @@ typedef struct {
 } Input;
 
 #define INPUTS_SIZE 6
-
-#define type_notused 0
-#define type_switch 1
-#define type_pushbutton 2
 
 extern Input inputs[INPUTS_SIZE];
 

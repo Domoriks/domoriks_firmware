@@ -87,7 +87,7 @@ void Error_Handler(void);
 extern UART_HandleTypeDef huart1;
 extern DMA_HandleTypeDef hdma_usart1_rx;
 
-#define UART_BUFFER_SIZE  128
+#define UART_BUFFER_SIZE  128          //50 holdregisters * 2 bytes each + modbus header, CRC and some margin
 
 #define MODBUS_ID_ADDRESS  0x08007FFE  // The fixed address where the ID is stored
 extern uint8_t MODBUS_ID;

@@ -18,8 +18,8 @@ typedef struct {             //Combine with Inputparam in IO param
   	uint8_t invert;
   	uint8_t min;
   	uint8_t max;
-  	uint16_t delay;
-  	uint8_t delay_value;
+  	uint16_t delay;				//max 18.2 hours, in s
+  	uint8_t delay_value;		//0, 1 (or pwm value)
   	uint32_t startTimer;
 } OutputParam;
 
