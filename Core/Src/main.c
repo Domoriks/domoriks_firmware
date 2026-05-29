@@ -85,8 +85,8 @@ static void MX_TIM16_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 uint8_t MODBUS_ID;
-#define SAVE_2_FLASH
-#define UPLOAD_NEW_MODBUS_ID
+//#define SAVE_2_FLASH
+//#define UPLOAD_NEW_MODBUS_ID
 #ifdef UPLOAD_NEW_MODBUS_ID
   __attribute__((section(".modbus_id"))) const uint8_t new_id = 1;  // Logic ID, e.g., 1
 #endif
@@ -95,8 +95,6 @@ uint8_t MODBUS_ID;
 volatile uint8_t uart_rxBuffer[UART_BUFFER_SIZE] = { 0 };
 volatile uint8_t new_rxdata = 0;
 volatile uint16_t rxDataLen = 0;
-volatile uint8_t rx_pending = 0;
-volatile uint32_t rx_last_us = 0;
 
 /* USER CODE END 0 */
 
@@ -560,10 +558,8 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
 
     if (!overflow)
     {
-      /* Record length and timestamp; defer frame completion until T3.5 has elapsed */
       rxDataLen = size;
-      rx_last_us = timer_us_now();
-      rx_pending = 1;
+      new_rxdata = 1;
     } else {
 			HAL_UARTEx_ReceiveToIdle_DMA(&huart1, uart_rxBuffer, UART_BUFFER_SIZE);
 			__HAL_DMA_DISABLE_IT(&hdma_usart1_rx, DMA_IT_HT); // Disable half-transfer interrupt if not needed

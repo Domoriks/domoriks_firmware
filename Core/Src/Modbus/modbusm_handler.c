@@ -36,6 +36,7 @@ make functionhandler template with switch case struct for all modbus functions
  * Holding Register Address Map
  * ---------------------------------------------------------------------------
  * 0x0000-0x0031  Raw mbHRegArray (50 regs, legacy read/write)
+ *   0x0031 is used as Modbus ID register (valid range 1..247).
  *
  * OUTPUT region   BASE=0x0100  stride=REGS_PER_OUTPUT(5)
  *   addr = OUTPUT_REG_BASE + output_index * REGS_PER_OUTPUT
@@ -83,6 +84,10 @@ make functionhandler template with switch case struct for all modbus functions
 #define REGS_PER_ACTION           7u
 #define ACTION_TYPES_PER_INPUT    5u
 
+#define MODBUS_ID_HREG_ADDR       0x0031u
+#define MODBUS_ID_MIN             1u
+#define MODBUS_ID_MAX             247u
+
 
 uint8_t  mbCoilsArray[1] = {0x00};
 uint8_t  mbInputsArray[1];
@@ -96,6 +101,26 @@ uint16_t* modbusIReg   = mbIRegArray;
 
 uint8_t new_delay_action  = 0;
 uint8_t new_action_update = 0;
+static uint16_t pending_action_regs[REGS_PER_ACTION] = {0};
+static uint8_t pending_action_valid = 0;
+
+static uint8_t update_modbus_id(uint16_t raw_value)
+{
+    if (raw_value < MODBUS_ID_MIN || raw_value > MODBUS_ID_MAX) {
+        return INVALID_DATA_LENGHT;
+    }
+
+    uint8_t new_id = (uint8_t)raw_value;
+    if (new_id != MODBUS_ID) {
+        if (Flash_WriteModbusId(new_id) != HAL_OK) {
+            return MODBUS_ID_SAVE_FAILED;
+        }
+        MODBUS_ID = new_id;
+    }
+
+    mbHRegArray[MODBUS_ID_HREG_ADDR] = MODBUS_ID;
+    return HANDLED_OK;
+}
 
 
 /* ---------------------------------------------------------------------------
@@ -301,7 +326,16 @@ uint8_t modbusm_handle(ModbusMessage *message) {
                 return err;
             first_hreg = 0;
         }
-        /* else: raw mbHRegArray region – no population needed */
+        else {
+            /* raw mbHRegArray region */
+            uint16_t mbHRegCount = (uint16_t)(sizeof(mbHRegArray) / sizeof(mbHRegArray[0]));
+            if ((uint32_t)first_hreg + (uint32_t)amount_hregs > (uint32_t)mbHRegCount) {
+                return INVALID_DATA_LENGHT;
+            }
+        }
+
+        /* Keep raw register mirror in sync with runtime ID. */
+        mbHRegArray[MODBUS_ID_HREG_ADDR] = MODBUS_ID;
 
         /* ── build response ─────────────────────────────────────────────── */
         message->slave_address = MODBUS_ID;
@@ -325,6 +359,10 @@ uint8_t modbusm_handle(ModbusMessage *message) {
         else {
             //invalid length
             return 2;
+        }
+        uint16_t mbIRegCount = (uint16_t)(sizeof(mbIRegArray) / sizeof(mbIRegArray[0]));
+        if ((uint32_t)first_ireg + (uint32_t)amount_iregs > (uint32_t)mbIRegCount) {
+            return INVALID_DATA_LENGHT;
         }
         //reply
         message->slave_address = MODBUS_ID;
@@ -378,8 +416,20 @@ uint8_t modbusm_handle(ModbusMessage *message) {
         else {
             return INVALID_DATA_LENGHT;
         }
+        uint16_t mbHRegCount = (uint16_t)(sizeof(mbHRegArray) / sizeof(mbHRegArray[0]));
+        if (reg_adress >= mbHRegCount) {
+            return INVALID_DATA_LENGHT;
+        }
+
+        uint16_t value = (uint16_t)((message->data[2] << 8) | message->data[3]);
+        if (reg_adress == MODBUS_ID_HREG_ADDR) {
+            uint8_t status = update_modbus_id(value);
+            if (status != HANDLED_OK) {
+                return status;
+            }
+        }
         //write regs
-        modbusHReg[reg_adress] = message->data[2] << 8 | message->data[3];
+        modbusHReg[reg_adress] = value;
         //reply
         message = message; //echo message
         break;
@@ -394,17 +444,82 @@ uint8_t modbusm_handle(ModbusMessage *message) {
         if (message->data_length != 5 + byte_count || byte_count != num_registers * 2) {
             return INVALID_DATA_LENGHT;
         }
-        // Write the values to the holding registers
-        for (uint8_t i = 0; i < num_registers; i++) {
-            uint16_t value = (message->data[5 + i * 2] << 8) | message->data[6 + i * 2];
-            mbHRegArray[start_address + i] = value;
+
+        // Decode payload registers for action path.
+        uint16_t incoming_regs[REGS_PER_ACTION] = {0};
+        uint8_t copy_count = (num_registers < REGS_PER_ACTION) ? (uint8_t)num_registers : REGS_PER_ACTION;
+        for (uint8_t i = 0; i < copy_count; i++) {
+            incoming_regs[i] = (message->data[5 + i * 2] << 8) | message->data[6 + i * 2];
         }
-        // Route: 7-register write = action update, otherwise = delay action
+
+        // Detect action writes either by legacy start=0 + reg0 selector,
+        // or by mapped action/extra-action register offsets (same as read map).
+        uint8_t is_action_write = 0;
+        uint8_t mapped_input_index = 0;
+        uint8_t mapped_action_type = 0;
+
         if (num_registers == REGS_PER_ACTION) {
+            uint16_t action_region_end = ACTION_REG_BASE + (uint16_t)(INPUTS_SIZE * ACTION_TYPES_PER_INPUT * REGS_PER_ACTION);
+            uint16_t extra_region_end = EXTRA_ACTION_REG_BASE + (uint16_t)(EXTRA_ACTION_PER_INPUT * INPUTS_SIZE * REGS_PER_ACTION);
+
+            if (start_address == 0u) {
+                is_action_write = 1;
+                mapped_input_index = (incoming_regs[0] >> 8) & 0xFF;
+                mapped_action_type = incoming_regs[0] & 0xFF;
+            }
+            else if (start_address >= ACTION_REG_BASE && start_address < action_region_end) {
+                uint16_t offset = start_address - ACTION_REG_BASE;
+                if ((offset % REGS_PER_ACTION) != 0u) {
+                    return INVALID_DATA_LENGHT;
+                }
+                is_action_write = 1;
+                mapped_input_index = (uint8_t)(offset / (ACTION_TYPES_PER_INPUT * REGS_PER_ACTION));
+                mapped_action_type = (uint8_t)((offset % (ACTION_TYPES_PER_INPUT * REGS_PER_ACTION)) / REGS_PER_ACTION) + 1u;
+            }
+            else if (start_address >= EXTRA_ACTION_REG_BASE && start_address < extra_region_end) {
+                uint16_t offset = start_address - EXTRA_ACTION_REG_BASE;
+                if ((offset % REGS_PER_ACTION) != 0u) {
+                    return INVALID_DATA_LENGHT;
+                }
+                is_action_write = 1;
+                mapped_input_index = (uint8_t)(offset / REGS_PER_ACTION);
+                mapped_action_type = 6u;
+            }
+        }
+
+        if (is_action_write) {
+            // Capture action write atomically for parser in main loop.
+            for (uint8_t i = 0; i < REGS_PER_ACTION; i++) {
+                pending_action_regs[i] = incoming_regs[i];
+            }
+            // Force selector from address map when using offset mode.
+            pending_action_regs[0] = ((uint16_t)mapped_input_index << 8) | mapped_action_type;
+            pending_action_valid = 1;
             new_action_update = 1;
         } else {
+            // Generic holding-register write path (legacy delay action flow).
+            uint16_t mbHRegCount = (uint16_t)(sizeof(mbHRegArray) / sizeof(mbHRegArray[0]));
+            if ((uint32_t)start_address + (uint32_t)num_registers > (uint32_t)mbHRegCount) {
+                return INVALID_DATA_LENGHT;
+            }
+
+            for (uint16_t i = 0; i < num_registers; i++) {
+                mbHRegArray[start_address + i] = (uint16_t)((message->data[5 + i * 2] << 8) | message->data[6 + i * 2]);
+            }
+
+            if (start_address <= MODBUS_ID_HREG_ADDR
+                && (uint32_t)start_address + (uint32_t)num_registers > MODBUS_ID_HREG_ADDR) {
+                uint16_t idx = (uint16_t)(MODBUS_ID_HREG_ADDR - start_address);
+                uint16_t id_value = mbHRegArray[start_address + idx];
+                uint8_t status = update_modbus_id(id_value);
+                if (status != HANDLED_OK) {
+                    return status;
+                }
+            }
+
             new_delay_action = 1;
         }
+
         // Prepare the response message
         message->data_length = 4;
         message->data[0] = (start_address >> 8) & 0xFF;
@@ -517,26 +632,31 @@ uint8_t modbus_parse_register(void)
  * --------------------------------------------------------------------------- */
 uint8_t modbus_parse_action_update(void) {
   if (new_action_update) {
+    const uint16_t *regs = pending_action_valid ? pending_action_regs : mbHRegArray;
+
         //parse new action from mbHRegArray
-        uint8_t inputNumber = (mbHRegArray[0] >> 8) & 0xFF;
-        uint8_t actionType  =  mbHRegArray[0] & 0xFF;      //single, double, long, switchon, switchoff, extra
+    uint8_t inputNumber = (regs[0] >> 8) & 0xFF;
+    uint8_t actionType  =  regs[0] & 0xFF;      //single, double, long, switchon, switchoff, extra
 
         EventAction newEventAction;
-        newEventAction.action = (mbHRegArray[1] >> 8) & 0xFF;
-        newEventAction.delayAction  =  mbHRegArray[1] & 0xFF;
-        newEventAction.delay = ((uint32_t)mbHRegArray[2] << 16) |  (uint32_t)mbHRegArray[3];
-        newEventAction.pwm = (mbHRegArray[4] >> 8) & 0xFF;
-        newEventAction.id =  mbHRegArray[4] & 0xFF;
-        newEventAction.output = (mbHRegArray[5] >> 8) & 0xFF;
-        newEventAction.send =  mbHRegArray[5] & 0xFF;
-        newEventAction.extraEventId = (mbHRegArray[6] >> 8) & 0xFF;
-        uint8_t save =  mbHRegArray[6] & 0xFF;
+    newEventAction.action = (regs[1] >> 8) & 0xFF;
+    newEventAction.delayAction  =  regs[1] & 0xFF;
+    newEventAction.delay = ((uint32_t)regs[2] << 16) |  (uint32_t)regs[3];
+    newEventAction.pwm = (regs[4] >> 8) & 0xFF;
+    newEventAction.id =  regs[4] & 0xFF;
+    newEventAction.output = (regs[5] >> 8) & 0xFF;
+    newEventAction.send =  regs[5] & 0xFF;
+    newEventAction.extraEventId = (regs[6] >> 8) & 0xFF;
+    uint8_t save =  regs[6] & 0xFF;
 
         //find target EventAction to update
         EventAction* oldEventAction;
         if (actionType == 6) {
-            if (inputNumber >= (EXTRA_ACTION_PER_INPUT * INPUTS_SIZE))
+            if (inputNumber >= (EXTRA_ACTION_PER_INPUT * INPUTS_SIZE)) {
+                pending_action_valid = 0;
+                new_action_update = 0;
                 return WRONG_ACTION_INPUTNMBR;
+            }
             oldEventAction = &extraActions[inputNumber];
         }
         else if (inputNumber < INPUTS_SIZE) {
@@ -557,10 +677,14 @@ uint8_t modbus_parse_action_update(void) {
 				oldEventAction = &inputActions[inputNumber].switchOff;
 				break;
 			default:
+                pending_action_valid = 0;
+                new_action_update = 0;
 				return WRONG_ACTION_TYPE;
             }
         }
         else {
+            pending_action_valid = 0;
+            new_action_update = 0;
             return WRONG_ACTION_INPUTNMBR;
         }
 
@@ -568,13 +692,30 @@ uint8_t modbus_parse_action_update(void) {
         copyEventAction(&newEventAction, oldEventAction);
 
         if (save) {
-            Flash_Erase(USERDATA_ORIGIN, USERDATA_LENGTH);
-            Flash_WriteInputs(inputs);
-            Flash_WriteInputActions(inputActions);
-            Flash_WriteExtraActions(extraActions);
-            Flash_WriteOutputs(outputs);
+            HAL_StatusTypeDef flash_status = HAL_OK;
+            if (Flash_Erase(USERDATA_ORIGIN, USERDATA_LENGTH) != HAL_OK) {
+                flash_status = HAL_ERROR;
+            }
+            if (flash_status == HAL_OK && Flash_WriteInputs(inputs) != HAL_OK) {
+                flash_status = HAL_ERROR;
+            }
+            if (flash_status == HAL_OK && Flash_WriteInputActions(inputActions) != HAL_OK) {
+                flash_status = HAL_ERROR;
+            }
+            if (flash_status == HAL_OK && Flash_WriteExtraActions(extraActions) != HAL_OK) {
+                flash_status = HAL_ERROR;
+            }
+            if (flash_status == HAL_OK && Flash_WriteOutputs(outputs) != HAL_OK) {
+                flash_status = HAL_ERROR;
+            }
+            if (flash_status != HAL_OK) {
+                pending_action_valid = 0;
+                new_action_update = 0;
+                return ACTION_SAVE_FAILED;
+            }
         }
 
+        pending_action_valid = 0;
         new_action_update = 0;
     }
     return ACTION_OK;

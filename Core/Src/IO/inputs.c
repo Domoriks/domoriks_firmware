@@ -45,6 +45,10 @@ uint8_t update_inputs() {
     uint8_t nok = 0;
     Input *ptr = inputs;
     for (int i = 0; i < INPUTS_SIZE; i++) {
+		if (ptr->updateFunction == NULL) {
+			ptr++;
+			continue;
+		}
         if (!ptr->updateFunction(&ptr->param))
             nok = 1;
         ptr++;

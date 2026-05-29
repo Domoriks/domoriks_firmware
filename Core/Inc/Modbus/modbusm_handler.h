@@ -37,6 +37,8 @@ extern uint16_t* modbusIReg;
 #define ACTION_OK				0x00
 #define WRONG_ACTION_TYPE		0x01
 #define WRONG_ACTION_INPUTNMBR  0x02
+#define ACTION_SAVE_FAILED      0x03
+#define MODBUS_ID_SAVE_FAILED   0x04
 
 //MESSAGE FUNCTIONS
 #define READ_COILS              0x01 

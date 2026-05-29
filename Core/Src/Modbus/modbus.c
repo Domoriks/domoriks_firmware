@@ -24,13 +24,6 @@
 #include "Modbus/modbusm.h"
 #include "Modbus/modbusm_handler.h"
 
-#ifdef SIMULATION
-#include "../Platform_linux/transport_udp.h"
-extern uint8_t uart_rxBuffer[];
-extern uint16_t rxDataLen;
-extern uint8_t new_rxdata;
-#endif
-
 #include "Flash/flash.h"
 
 #include <stdio.h>
@@ -51,25 +44,6 @@ uint8_t resend_count = 0;
 ModbusMessage send_message;
 
 void recieve() {
-	#ifdef SIMULATION
-	// In simulation mode, transport_poll() has already filled uart_rxBuffer
-	if (new_rxdata && rxDataLen > 0) {
-		if (decode_modbus_rtu(uart_rxBuffer, rxDataLen, &recieved_message) == 0) {
-			if (modbusm_handle(&recieved_message) != 1) {
-				//send reply
-				if (recieved_message.slave_address != 250) {
-					length = 0;
-					encode_modbus_rtu(uart_txBuffer, &length, &recieved_message);
-					transport_send(uart_txBuffer, length);
-				}
-			}
-		}
-		//reset for new message
-		new_rxdata = 0;
-		memset(uart_rxBuffer, 0, UART_BUFFER_SIZE);
-		rxDataLen = 0;
-	}
-	#else
 	memset(uart_txBuffer, 0, UART_BUFFER_SIZE);
 	if (decode_modbus_rtu(uart_rxBuffer, rxDataLen, &recieved_message) == 0) {
 		//handle message
@@ -94,7 +68,6 @@ void recieve() {
 	__HAL_DMA_DISABLE_IT(&hdma_usart1_rx, DMA_IT_HT); // Disable half-transfer interrupt if not needed
 	memset(uart_rxBuffer, 0, UART_BUFFER_SIZE);
 	rxDataLen = 0;
-	#endif
 }
 
 void send(){
@@ -147,20 +120,11 @@ void send(){
 					send_message.data[2] = (coil_data >> 8) & 0xFF;
 					send_message.data[3] = coil_data & 0xFF;
 
-					#ifdef SIMULATION
-					// Set RS485 in write mode and transmit the message via UDP
-					encode_modbus_rtu(uart_txBuffer, &length, &send_message);
-					txDataLen = length;
-					transport_send(uart_txBuffer, txDataLen);
-					uint32_t start = HAL_GetTick();
-					while ((HAL_GetTick() - start) < UART_BYTE_TIME_US());
-					#else
 					// Set RS485 in write mode and transmit the message
 					encode_modbus_rtu(uart_txBuffer, &length, &send_message);
 					txDataLen = length;
 					HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_SET);
 					HAL_UART_Transmit_IT(&huart1, uart_txBuffer, txDataLen);
-					#endif
 					
 					resend_timer = TIMER_SET();
 					waiting4response = 1;
@@ -201,19 +165,11 @@ void send(){
 
 				send_message.data_length = 13; // Data length (address + quantity + byte count + data)
 
-				#ifdef SIMULATION
-				// Set RS485 in write mode and transmit the message via UDP
-				encode_modbus_rtu(uart_txBuffer, &length, &send_message);
-				transport_send(uart_txBuffer, length);
-				uint32_t start = HAL_GetTick();
-				while ((HAL_GetTick() - start) < UART_BYTE_TIME_US());
-				#else
 				// Set RS485 in write mode and transmit the message
 				encode_modbus_rtu(uart_txBuffer, &length, &send_message);
 				txDataLen = length;
 				HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_SET);
 				HAL_UART_Transmit_IT(&huart1, uart_txBuffer, txDataLen);
-				#endif
 
 				resend_timer = TIMER_SET();
 				waiting4response = 1;
@@ -231,6 +187,9 @@ void send(){
 					event->send = 0;
 				} else {
 					copyEventAction(&extraActions[event->extraEventId-1], event);
+					if (event->extraEventId == 0) {
+						event->extraEventId = 255; // runtime sentinel to restore original chain target
+					}
 					event->send = 1;
 				}
 				return;
@@ -244,26 +203,6 @@ void send(){
 
 
 void response() {
-	#ifdef SIMULATION
-	// Use transport_poll to update uart_rxBuffer, rxDataLen, new_rxdata
-	transport_poll();
-	if (new_rxdata) {
-		if (decode_modbus_rtu(uart_rxBuffer, rxDataLen, &recieved_message) == 0) {
-			if (modbusm_handle(&recieved_message) != 1) {
-				//send reply
-				if (recieved_message.slave_address != 250) {
-					length = 0;
-					encode_modbus_rtu(uart_txBuffer, &length, &recieved_message);
-					transport_send(uart_txBuffer, length);
-				}
-			}
-		}
-		//reset for new message
-		new_rxdata = 0;
-		memset(uart_rxBuffer, 0, UART_BUFFER_SIZE);
-		rxDataLen = 0;
-	}
-	#else
 	if (new_rxdata) {
 		if (decode_modbus_rtu(uart_rxBuffer, rxDataLen, &recieved_message) == 0) {
 			if (modbusm_handle(&recieved_message) != 1) {
@@ -284,17 +223,12 @@ void response() {
 		memset(uart_rxBuffer, 0, UART_BUFFER_SIZE);
 		rxDataLen = 0;
 	}
-	#endif
 
 	if (TIMER_ELAPSED_MS(resend_timer, 50) && waiting4response) {  //resend
 		// Resend logic commented out - keeping as per original
-		// #ifdef SIMULATION
-		// transport_send(uart_txBuffer, txDataLen);
-		// #else
 		// HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_SET);
 		// HAL_UART_Transmit(&huart1, uart_txBuffer, txDataLen, 2 * length * UART_BYTE_TIME_MS());
 		// HAL_GPIO_WritePin(W_RS485_GPIO_Port, W_RS485_Pin, GPIO_PIN_RESET);
-		// #endif
 		resend_timer = TIMER_SET();
 		waiting4response = 1;
 		resend_count++;
@@ -307,14 +241,6 @@ void response() {
 }
 
 void modbus() {
-	/* If an RX idle event occurred, wait T3.5 after the last byte before
-	 * treating the buffer as a complete frame (Modbus RTU). */
-	if (rx_pending) {
-		if ((uint32_t)(timer_us_now() - rx_last_us) >= (uint32_t)MODBUS_T3_5_US()) {
-			new_rxdata = 1;
-			rx_pending = 0;
-		}
-	}
 	if (waiting4response)
 	{
 		response();

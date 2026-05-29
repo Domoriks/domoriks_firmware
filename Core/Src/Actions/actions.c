@@ -129,7 +129,5 @@ uint8_t copyEventAction(EventAction* src, EventAction* desc) {
 	desc->output = src->output;       //current domoriks devices only have a max of 6 outputs increase if needed
 	desc->send = src->send;		   //1 = output, 2 feature, 3 send extraEvent;
 	desc->extraEventId = src->extraEventId;
-	if (desc->extraEventId == 0)
-		desc->extraEventId = 255; //flag to reset via flash
 	return 0;
 }
