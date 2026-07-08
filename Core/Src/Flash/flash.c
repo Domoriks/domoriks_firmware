@@ -6,6 +6,7 @@
  */
 
 #include "Flash/flash.h"
+#include "main.h"
 #include <stdbool.h>
 #define FLASH_DOUBLEWORD_SIZE  sizeof(uint64_t)
 #define FLASH_DOUBLEWORD_MASK  (~((uint32_t)FLASH_DOUBLEWORD_SIZE - 1UL))

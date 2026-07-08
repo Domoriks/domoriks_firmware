@@ -88,7 +88,7 @@ uint8_t MODBUS_ID;
 //#define SAVE_2_FLASH
 //#define UPLOAD_NEW_MODBUS_ID
 #ifdef UPLOAD_NEW_MODBUS_ID
-  __attribute__((section(".modbus_id"))) const uint8_t new_id = 1;  // Logic ID, e.g., 1
+  __attribute__((section(".modbus_id"))) const uint8_t new_id = 3;  // Logic ID, e.g., 1
 #endif
 
 
@@ -184,10 +184,10 @@ int main(void)
 
 
   // Module: Module 1
-//  EventAction input1_singlePress = { toggle, nop, 0, 100, 2, 0, 0, 0 };
-//  EventAction input2_singlePress = { toggle, nop, 0, 100, 2, 1, 0, 0 };
-//  EventAction input3_singlePress = { toggle, nop, 0, 100, 2, 2, 0, 0 };
-//  EventAction input4_singlePress = { toggle, nop, 0, 100, 2, 3, 0, 0 };
+//  EventAction input1_singlePress = { toggle, nop, 0, 100, 64, 0, 0, 0 };
+//  EventAction input2_singlePress = { toggle, nop, 0, 100, 64, 2, 0, 0 };
+//  EventAction input3_singlePress = { toggle, nop, 0, 100, 64, 3, 0, 0 };
+//  EventAction input4_singlePress = { toggle, nop, 0, 100, 64, 7, 0, 0 };
 //  EventAction input5_singlePress = { toggle, nop, 0, 100, 2, 4, 0, 0 };
 //  EventAction input6_singlePress = { toggle, nop, 0, 100, 2, 5, 0, 0 };
 
@@ -214,14 +214,6 @@ int main(void)
 //  EventAction input4_singlePress = { toggle, nop, 0, 100, 3, 3, 0, 0 };
 //  EventAction input5_singlePress = { toggle, nop, 0, 100, 3, 4, 0, 0 };
 //  EventAction input6_singlePress = { toggle, nop, 0, 100, 3, 5, 0, 0 };
-//
-//   memcpy((uint8_t*)&inputActions[0].singlePress, (uint8_t*)&input1_singlePress, sizeof(EventAction));
-//   memcpy((uint8_t*)&inputActions[1].singlePress, (uint8_t*)&input2_singlePress, sizeof(EventAction));
-//   memcpy((uint8_t*)&inputActions[2].singlePress, (uint8_t*)&input3_singlePress, sizeof(EventAction));
-//   memcpy((uint8_t*)&inputActions[3].singlePress, (uint8_t*)&input4_singlePress, sizeof(EventAction));
-//   memcpy((uint8_t*)&inputActions[4].singlePress, (uint8_t*)&input5_singlePress, sizeof(EventAction));
-//   memcpy((uint8_t*)&inputActions[5].singlePress, (uint8_t*)&input6_singlePress, sizeof(EventAction));
-
 
   Flash_Erase(USERDATA_ORIGIN, USERDATA_LENGTH);
   Flash_WriteInputs(inputs);

@@ -86,6 +86,7 @@ void Error_Handler(void);
 /* USER CODE BEGIN Private defines */
 extern UART_HandleTypeDef huart1;
 extern DMA_HandleTypeDef hdma_usart1_rx;
+extern IWDG_HandleTypeDef hiwdg;
 
 #define UART_BUFFER_SIZE  128          //50 holdregisters * 2 bytes each + modbus header, CRC and some margin
 

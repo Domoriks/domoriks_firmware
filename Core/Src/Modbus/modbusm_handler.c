@@ -692,6 +692,18 @@ uint8_t modbus_parse_action_update(void) {
         copyEventAction(&newEventAction, oldEventAction);
 
         if (save) {
+            /* The Modbus echo reply is sent interrupt-driven in modbus(). The
+             * flash erase/program below stalls the CPU (interrupts blocked),
+             * which would freeze the in-flight UART TX and corrupt the reply,
+             * causing the master to time out (504). Block until the reply has
+             * fully left the wire before touching flash. */
+            uint32_t tx_guard = TIMER_SET();
+            while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
+                HAL_IWDG_Refresh(&hiwdg);
+                if (TIMER_ELAPSED_MS(tx_guard, 50)) break;   /* safety escape */
+            }
+            HAL_IWDG_Refresh(&hiwdg);
+
             HAL_StatusTypeDef flash_status = HAL_OK;
             if (Flash_Erase(USERDATA_ORIGIN, USERDATA_LENGTH) != HAL_OK) {
                 flash_status = HAL_ERROR;
