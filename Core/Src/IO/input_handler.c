@@ -38,27 +38,27 @@ void input_handler(){
       }
 
       //Pushbutton
-      //Single press
+      //Deferred single press: double-press window expired with no second click -> commit single
+      if (timed_doublepress_index == i &&						//this input has a pending (deferred) single press
+        TIMER_ELAPSED_MS(timer_doublePress, 350)) {				//350ms double-press window has elapsed
+        inputActions[i].singlePress.send = true;				//no second click arrived -> fire single press
+        timed_doublepress_index = 255;							//clear pending state
+      }
+
+      //Single / double press (button released)
       if (inputs[i].param.button_type == type_pushbutton &&		//check if there is a pushbutton on the input
         inputs[i].param.changed &&								//is the value update
         !inputs[i].param.value) {								//is the button released
 
-        //Single press ACTION
-        //outputs[i].param.value = !outputs[i].param.value;		//toggle same output (for DEBUG)
-    	inputActions[i].singlePress.send = true;
-
-        //Double press
-        if (TIMER_ELAPSED_MS(timer_doublePress, 500)) {			//if timer is older the
-          timer_doublePress = TIMER_SET();						//reset timer
-          timed_doublepress_index = i;					    	//register that this input is currently timed
+        if (timed_doublepress_index == i &&						//a first release is already pending for this input
+          !TIMER_ELAPSED_MS(timer_doublePress, 350)) {			//second release within the 350ms window
+          //Double press ACTION
+    	  inputActions[i].doublePress.send = true;				//fire double press
+    	  timed_doublepress_index = 255;						//suppress the deferred single press
         }
-        else {													//if pressed again within 500ms of previous press
-          if (timed_doublepress_index == i) {					//check if this input is timed
-
-            //Double press ACTION
-        	inputActions[i].doublePress.send = true;
-        	inputActions[i].singlePress.send = false;
-          }
+        else {													//first release -> defer single until window closes
+          timer_doublePress = TIMER_SET();						//start 350ms double-press window
+          timed_doublepress_index = i;							//register pending single for this input
         }
       }
 

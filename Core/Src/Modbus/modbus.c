@@ -204,7 +204,24 @@ void send(){
 
 void response() {
 	if (new_rxdata) {
-		if (decode_modbus_rtu(uart_rxBuffer, rxDataLen, &recieved_message) == 0) {
+		/*
+		 * Master-mode reply correlation.
+		 * A slave's reply echoes the TARGET's slave_address + function_code,
+		 * which decode_modbus_rtu() rejects because it filters on MODBUS_ID.
+		 * Match the raw frame against our pending send_message and, on a
+		 * CRC-valid echo, clear waiting4response so the state machine can
+		 * advance immediately instead of burning the full resend timeout.
+		 */
+		if (waiting4response && rxDataLen > 4 &&
+			uart_rxBuffer[0] == send_message.slave_address &&
+			uart_rxBuffer[1] == send_message.function_code) {
+			uint16_t crc_calc = calculate_crc(uart_rxBuffer, rxDataLen - 2);
+			uint16_t crc_recv = (uint16_t)(uart_rxBuffer[rxDataLen - 2] << 8) | (uint16_t)(uart_rxBuffer[rxDataLen - 1]);
+			if (crc_recv == crc_calc) {
+				waiting4response = 0;
+				resend_count = 0;
+			}
+		} else if (decode_modbus_rtu(uart_rxBuffer, rxDataLen, &recieved_message) == 0) {
 			if (modbusm_handle(&recieved_message) != 1) {
 				//send reply
 				if (recieved_message.slave_address != 250) {

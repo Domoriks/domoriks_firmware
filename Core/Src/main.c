@@ -88,7 +88,7 @@ uint8_t MODBUS_ID;
 //#define SAVE_2_FLASH
 //#define UPLOAD_NEW_MODBUS_ID
 #ifdef UPLOAD_NEW_MODBUS_ID
-  __attribute__((section(".modbus_id"))) const uint8_t new_id = 3;  // Logic ID, e.g., 1
+  __attribute__((section(".modbus_id"))) const uint8_t new_id = 11;  // Logic ID, e.g., 1
 #endif
 
 
